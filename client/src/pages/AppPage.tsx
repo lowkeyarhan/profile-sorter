@@ -130,6 +130,11 @@ export function AppPage() {
           onSearch={handleSearch}
           loading={loading}
         />
+        {error && (
+          <p style={{ textAlign: "center", marginTop: 16, fontSize: 13, color: "red" }}>
+            {error}
+          </p>
+        )}
         <p
           style={{
             textAlign: "center",

@@ -1,6 +1,9 @@
 import type { ApiErrorBody } from "../models/session";
 
-export const API_URL = import.meta.env.VITE_API_URL ?? "";
+// Always relative: the browser talks to the Vite dev server on the same
+// origin, which proxies /api to the backend (see vite.config.ts). An absolute
+// URL like http://server:4000 would only resolve inside Docker, never in a browser.
+export const API_URL = "";
 
 export class ApiError extends Error {
   readonly code: string;

@@ -15,4 +15,4 @@ services:
     depends_on:
       - server
     environment:
-      VITE_API_URL: http://server:4000
+      VITE_PROXY_TARGET: http://server:4000
