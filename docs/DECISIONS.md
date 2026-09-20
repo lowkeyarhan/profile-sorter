@@ -14,3 +14,5 @@
 - *.schema.ts merged into *.model.ts; search/filter.ts is now search/search.service.ts; sessions.store.ts is sessions.repository.ts; sessions routes thinned into sessions.controller.ts.
 - MVC simplification: service layer merged into sessions.controller.ts (whole loop reads top-to-bottom); pure helpers live in models (applyFilters in profiles.repository, scoring math/citations in scoring.model); errors.ts holds fail() + catchErrors decorator (single try/catch boundary); CORS pinned via CLIENT_URL in app.ts.
 - MVC fix: model = plain interfaces, DTO = Zod validation for all request/response bodies (service imports it), repo = only talks to the db (JSON file, sessions hashmap), service = the heavy lifting, controller = thin HTTP mapping.
+- OOP pass: services, repositories and controller are classes with constructor injection (Session is an entity class with snapshot/restore); wrecked neither behavior nor API.
+- Git history: 4 phased commits on main, pushed to github.com/lowkeyarhan/profile-sorter.
