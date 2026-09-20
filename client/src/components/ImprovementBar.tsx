@@ -7,7 +7,16 @@ interface Props {
 export function ImprovementBar({ feedback }: Props) {
   return (
     <div className="feedback-box">
-      <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--muted)" }}>
+      <h3
+        style={{
+          fontSize: 14,
+          fontWeight: 700,
+          marginBottom: 12,
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+          color: "var(--muted)",
+        }}
+      >
         Improvement
       </h3>
 
