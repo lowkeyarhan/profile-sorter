@@ -1,0 +1,16 @@
+services:
+  server:
+    build: ./server
+    ports:
+      - "4000:4000"
+    env_file: .env
+    environment:
+      PROFILES_PATH: /data/profiles.json
+    volumes:
+      - ./data:/data:ro
+  # client:
+  #   build: ./client
+  #   ports:
+  #     - "5173:5173"
+  #   depends_on:
+  #     - server
