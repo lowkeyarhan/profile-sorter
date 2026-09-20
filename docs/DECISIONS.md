@@ -20,3 +20,4 @@
 - Dropped response_format json_object: the free-tier model rejects structured outputs (400); the client now extracts the first {...} block and relies on the JSON-only prompt plus DTO validation + one feedback retry.
 - Bare "N years" means N-1..N+1 (with assumption): exact matching returned 0 for "3 years" since no profile has exactly 3.
 - Plain-JSON extraction (first {...} block) instead of response_format json_object; kept behind no flag since provider lacked structured outputs. Dev-only LLM_DEBUG_RAW=1 logs raw replies.
+- Model: gemini-3.5-flash (non-lite) via Google AI Studio OpenAI-compat endpoint. The lite variant corrupted the criteria JSON ~2/3 of the time; gemini-2.5-flash is retired for new keys (Google says use 3.6+). No trailing slash on LLM_BASE_URL (double slash 404s).
