@@ -1,155 +1,239 @@
 # profile-sorter
 
-A sourcing refinement loop. A free-text query is turned into filters and a rubric by an LLM, code applies them to a pool of 48 profiles, the LLM scores the matches, and the recruiter shortlists with feedback. One page, one loop, end to end.
-
-## Contents
-
-- [Overview & About](#overview--about)
-- [System Architecture](#system-architecture)
-- [Tech Stack](#tech-stack)
-- [How It Works](#how-it-works)
-- [API Reference](#api-reference)
-- [Project Structure](#project-structure)
-- [Decisions](#decisions)
-- [Running](#running)
-- [Fault Injection](#fault-injection)
+A sourcing refinement loop. You type a free-text query, and the system turns it into filters and a rubric using an LLM, applies those filters to a pool of 48 profiles, scores the matches, and lets you shortlist candidates with feedback. One page, one loop, end to end.
 
 ---
 
-## Overview & About
+## Overview of the project
 
-profile-sorter is a **modular monolith** that orchestrates a single recruiting workflow. A recruiter types a query like *"RDS developers, 4-7 years, startups, Bangalore"* and the system refines it through three LLM calls and two rounds of code filtering until a shortlist of top candidates is frozen.
+profile-sorter automates the first step of recruiting. Instead of reading through 48 resumes, you describe the role in plain English and the system does the rest:
 
-The entire state of a session lives in memory — no database, no persistence. On restart the session is lost, which is fine for v0.
+1. The LLM turns your query into **filters** (objective: skills, years, location, company type) and a **rubric** (subjective: what makes a good fit).
+2. Code applies those filters to the dataset and returns the top 5 candidates.
+3. You react to each candidate (match / no-match) and the LLM refines the filters and rubric.
+4. You keep going until you have a shortlist, then freeze it.
+
+Everything runs server-side with real LLM calls. The client is a single React page that calls the backend directly.
 
 ---
 
-## System Architecture
+## Architecture — modular monolith
 
-The application follows a **modular monolith** with feature-driven modules. Each module owns its models, DTOs, services, and routes. The only shared concern is the LLM client — every module calls through it.
+The server is a single Express process organized into feature modules. Each module owns its models, DTOs, services, and routes. Nothing reaches into another module's internals.
 
 ```
-HTTP routes  →  sessions controller (orchestrator)  →  criteria / search / scoring / refinement services
-                                                      |                        |
-                                                profiles repo (JSON)     llm client (openai SDK)
-                                                      |
-                                              in-memory session store (Map)
+HTTP routes
+  → sessions controller (orchestrator)
+      → criteria service       LLM call 1: query → filters + rubric
+      → search service         Code filter: apply filters to profiles
+      → scoring service        LLM call 2: score each profile
+      → refinement service     LLM call 3: update filters + rubric
+      → profiles repository    loads profiles.json, builds catalog
+      → in-memory store        Map of all sessions
 ```
 
-- **Routes** only parse input and call the controller.
-- **Controller** is the only place that coordinates modules.
-- **Search (filter)** is plain code — never calls the LLM.
-- **Only** `llm/openai.client.ts` talks to the OpenAI SDK.
-- Session state lives in a single `Map` (lost on restart).
-- CORS is pinned via `CLIENT_URL` in `app.ts`.
+**One LLM client** (`llm/openai.client.ts`) is the only place that talks to the OpenAI SDK. Every module calls through it. It handles timeout (30 s), retries (2× on 429/5xx), and JSON validation.
 
-### Modules
+**Session state** lives in a single `Map` in memory. No database, no persistence. On restart sessions are lost — acceptable for v0.
 
-| Module | Responsibility |
-| --- | --- |
-| **criteria** | LLM call 1 — turns a query into filters + rubric + assumptions |
-| **search** | Code filter — applies filters to 48 profiles (pure, no LLM) |
-| **scoring** | LLM call 2 — scores each profile against the rubric, computes weighted score, verifies citations |
-| **refinement** | LLM call 3 — updates filters + rubric based on recruiter feedback |
-| **sessions** | Orchestrates the full loop — create, search, feedback, freeze |
-| **profiles** | Loads and validates `data/profiles.json`, builds the catalog |
+**CORS** is pinned via `CLIENT_URL` in `app.ts`. Error handling is one middleware — all errors map to HTTP statuses.
 
 ---
 
-## Tech Stack
+## Domains and the logic they use
 
-| Layer | Technology |
-| --- | --- |
-| Framework | Express + TypeScript (CommonJS) |
-| Runtime | Node 22 |
-| LLM | `openai` SDK — any OpenAI-compatible provider via `LLM_BASE_URL` |
-| Validation | Bean-style DTO classes (`src/validation.ts`) — every request/response body |
-| Build | `tsc` + `tsx` for dev |
-| Container | Docker + docker-compose |
-| Data | `data/profiles.json` (48 profiles, in-memory) |
+### criteria — LLM call 1
+Turns a free-text query into structured filters and a rubric.
+- Input: query + dataset vocabulary (skills, locations, company types, year range).
+- Rules: never guesses unstated constraints (leaves them empty), translates "4-7 years" to min 4 / max 7, expands spelling variants (Bangalore/Bengaluru, RDS/AWS RDS), puts seniority words without numbers into the rubric.
+- Output: `filters` (objective, checkable) + `rubric` (subjective) + `assumptions`.
 
----
-
-## How It Works
-
-A session runs through six steps:
-
-1. **Create** — Recruiter types a query. The LLM returns `filters` (objective), `rubric` (subjective), and `assumptions`.
-2. **Search** — Code applies filters to the 48 profiles. Top 5 are shown with scores and explanations.
-3. **Score** — The LLM scores each rubric criterion 0-10 per profile with citations. Code computes the weighted score and ranks.
-4. **Feedback** — Recruiter reacts (match/no-match) and can add a message. The LLM updates filters + rubric, explains what changed.
-5. **Shortlist** — Matches go to the shortlist, rejected profiles never return. Each round shows the next 5 unreviewed profiles.
-6. **Freeze** — Final filters, rubric, and ranked shortlist are locked. Further changes return `SESSION_FROZEN`.
-
-### Filtering Rules
-
+### search — code filter (no LLM)
+Applies filters to the 48 profiles. Pure code, zero LLM calls.
+- **Skills**: whole-token match. `RDS` matches `AWS RDS`. `Java` never matches `JavaScript`. `SQL` never matches `PostgreSQL`.
 - **Experience**: inclusive range on `years_experience`.
-- **Location**: case-insensitive match against any listed value.
-- **Skills**: whole-token match. `RDS` matches `AWS RDS`; `Java` never matches `JavaScript`.
+- **Location**: case-insensitive match against listed values.
 - **Company**: checks `current_company_type` and (for `scope: "any"`) every `past_companies[].company_type`.
-- The dataset vocabulary is passed to the LLM so it only emits filters that exist in the data.
+- Returns matched profiles sorted by id.
 
-### Scoring Rules
+### scoring — LLM call 2
+Scores each filtered profile against the rubric.
+- Input: rubric + a batch of about 12 profiles.
+- The LLM scores each criterion 0-10 and writes a 1-2 sentence explanation citing real profile fields.
+- **Code computes the overall score**: `100 × Σ(weight × score/10) / Σ(weight)`. The LLM never ranks.
+- **Citation check**: each cited value must exist in that profile's field. Bad citations dropped. If fewer than 2 remain, a simple explanation is built from real fields instead.
+- **Cache**: scores are cached per (rubric, profile). Filter-only changes never re-score.
 
-- Each rubric criterion scored 0-10 by the LLM with 1-2 sentence explanations citing real profile fields.
-- Overall score: `100 * Σ(weight × score/10) / Σ(weight)`, computed in code — the LLM never ranks.
-- Citation check: each cited value must exist in that profile's field. Bad citations dropped. If fewer than 2 remain, a simple explanation is built from real fields instead.
-- Scores are cached per (rubric, profile) so filter-only changes never re-score.
+### refinement — LLM call 3
+Updates filters and rubric based on recruiter feedback.
+- Input: current filters + rubric, shown profiles in display order, the recruiter's message, and earlier feedback.
+- Rules: make the smallest change the feedback supports. Objective feedback ("too junior", "wrong city") changes filters. Subjective feedback changes the rubric. Don't undo earlier changes. Keep approved profiles matching. If feedback is unclear, ask one question and change nothing.
+- Output: new filters, new rubric, what each reaction meant, a summary, a list of changes, and an optional clarification.
+
+### sessions — orchestrator
+Ties everything together. Coordinates create → search → feedback → freeze. Each step calls the other services and returns typed results. The session stays unchanged if any step fails.
+
+### profiles — repository
+Loads `data/profiles.json`, validates it, and builds the catalog (distinct skills, locations, company types, year range). This is the only module that reads the file.
 
 ---
 
-## API Reference
+## Decisions
+
+Full context in `docs/DECISIONS.md`. One line each:
+
+- **In-memory Map, no persistence** — sessions lost on restart. Fine for v0.
+- **No test framework** — automated tests out of scope; verified via tsc + live node checks + curl.
+- **No `dotenv`** — compose uses `env_file`, local dev sources `.env` via shell.
+- **CommonJS + `tsc` build** — avoids ESM loader friction in Docker.
+- **No zod** — strict DTO classes with bean-style checks validate every request/response body.
+- **Model = interfaces, DTO = validation classes, repo = JSON file, service = logic, controller = HTTP mapping** — clean MVC.
+- **Skill match is whole token/segment** — `RDS` hits `AWS RDS`, `Java` never hits `JavaScript`.
+- **Score cache keyed on full rubric JSON + profile id** — filter-only changes never re-score.
+- **Unclear feedback applies reactions but keeps criteria** — explicit verdicts stand, `clarification` asks one question.
+- **Error handler exported separately from `createApp`** — Express requires error middleware after routes.
+
+---
+
+## Expected scale and tradeoffs
+
+The dataset is fixed at **48 profiles**. This is not a system designed to scale to millions of records — it's a tool for one recruiter, one session, one loop.
+
+| Decision | Tradeoff |
+| --- | --- |
+| In-memory `Map` for sessions | Loses all state on restart. No recovery. Chosen over a database because v0 is single-user and sessions are short-lived. |
+| No pagination | 48 profiles is tiny. Showing 5 at a time is enough. No need for cursor-based pagination. |
+| No caching layer | Scores are cached in-memory per session. Redis would be overkill for 48 profiles and one user. |
+| One LLM call per step | Three LLM calls per session. Streaming would improve UX but adds complexity. Out of scope for v0. |
+| No auth | Single user. No need for JWT, sessions, or OAuth. |
+| Bean-style validation instead of zod | Smaller dependency footprint. DTO classes are explicit and beginner-friendly. |
+| CommonJS | Slightly older but avoids ESM loader issues in Docker. |
+
+The system is built to work reliably with one user, one dataset, and one workflow. If it ever needs to scale, the modular structure makes it easy to extract modules into services.
+
+---
+
+## API endpoints
 
 Base path `/api`. JSON in and out.
 
 ### `POST /sessions`
+Create a new session from a query.
 
-Creates a new session from a query.
+**Request**:
+```json
+{ "query": "RDS developers, 4-7 years, startups, Bangalore" }
+```
 
-**Body**: `{ query: string }`
-
-**Response**: `{ sessionId, filters, rubric, assumptions }`
+**Response (200)**:
+```json
+{
+  "sessionId": "abc123",
+  "filters": {
+    "skills": { "allOf": [{ "name": "RDS", "aliases": ["AWS RDS"] }], "anyOf": [] },
+    "experience": { "minYears": 4, "maxYears": 7 },
+    "locations": ["Bangalore"],
+    "companyBackground": { "types": ["startup"], "scope": "any" }
+  },
+  "rubric": {
+    "roleSummary": "Backend engineer with production RDS experience from a startup.",
+    "criteria": [{ "id": "c1", "label": "Database depth", "description": "Owned schema design.", "weight": 5 }]
+  },
+  "assumptions": ["around 5 years → 4-6"]
+}
+```
 
 ### `POST /sessions/:id/search`
+Run the filter + score loop. Send both `filters` and `rubric` if the recruiter edited them.
 
-Runs the filter + score loop. Send both `filters` and `rubric` if the recruiter edited them.
+**Request**:
+```json
+{ "filters": { ... }, "rubric": { ... } }
+```
 
-**Body**: `{ filters?, rubric? }`
-
-**Response**: `{ totalProfiles, matchedCount, shown[], shortlist[], exhausted, hint }`
-
-Each item in `shown[]` / `shortlist[]`: `{ profile, score, criterionScores[], explanation, citations[] }`.
+**Response (200)**:
+```json
+{
+  "totalProfiles": 48,
+  "matchedCount": 12,
+  "shown": [
+    {
+      "profile": { "id": "p1", "name": "Jane Doe", "current_title": "Engineer", ... },
+      "score": 85,
+      "criterionScores": [{ "id": "c1", "score": 9 }],
+      "explanation": "Strong database experience.",
+      "citations": [{ "field": "skills", "value": "RDS" }]
+    }
+  ],
+  "shortlist": [],
+  "exhausted": false,
+  "hint": null
+}
+```
 
 ### `POST /sessions/:id/feedback`
+Submit reactions and an optional message. Updates filters + rubric and returns new results.
 
-Submits recruiter reactions and an optional message. Updates filters + rubric and returns a new set of results.
+**Request**:
+```json
+{
+  "message": "1 is too junior, 2 and 4 are right",
+  "reactions": [{ "profileId": "p1", "verdict": "match" }, { "profileId": "p2", "verdict": "no_match" }]
+}
+```
 
-**Body**: `{ message?: string, reactions?: [{ profileId, verdict: "match" | "no_match" }] }`
-
-**Response**: `{ summary, changes[], interpretations[], clarification, filters, rubric, matchedCount, shown[], shortlist[], exhausted }`
-
-- Explicit verdicts stand. Unclear feedback applies reactions but keeps criteria and sets `clarification` to one question.
-- Rejected profiles never reappear. Matches are added to the shortlist.
+**Response (200)**:
+```json
+{
+  "summary": "Adjusted experience range upward.",
+  "changes": [{ "what": "experience.minYears", "why": "Feedback said too junior" }],
+  "interpretations": [{ "reaction": "match", "meaning": "Strong fit, keep in shortlist" }],
+  "clarification": null,
+  "filters": { ... },
+  "rubric": { ... },
+  "matchedCount": 10,
+  "shown": [...],
+  "shortlist": [...],
+  "exhausted": false
+}
+```
 
 ### `POST /sessions/:id/freeze`
+Lock the session and return the final shortlist.
 
-Locks the session. Returns the final shortlist and other matches.
+**Request**: none
 
-**Body**: none
+**Response (200)**:
+```json
+{
+  "filters": { ... },
+  "rubric": { ... },
+  "shortlist": [{ "profile": ..., "score": 85, ... }],
+  "otherMatches": [{ "profile": ..., "score": 72, ... }]
+}
+```
 
-**Response**: `{ filters, rubric, shortlist[], otherMatches[] }`
-
-Further operations on a frozen session return `SESSION_FROZEN` (409).
+Further operations return `SESSION_FROZEN` (409).
 
 ### `GET /catalog`
-
 Returns the dataset vocabulary for filter editors.
 
-**Response**: `{ skills[], locations[], companyTypes[], minYears, maxYears }`
+**Response (200)**:
+```json
+{
+  "skills": ["RDS", "PostgreSQL", "Python", ...],
+  "locations": ["Bangalore", "Remote - India", ...],
+  "companyTypes": ["startup", "scaleup", "enterprise", "agency"],
+  "minYears": 2,
+  "maxYears": 13
+}
+```
 
-### Errors
-
-All errors follow `{ error: { code, message, retryable } }`.
+### Error format
+All errors follow the same shape:
+```json
+{ "error": { "code": "LLM_RATE_LIMITED", "message": "Rate limited", "retryable": true } }
+```
 
 | Code | Status | Meaning |
 | --- | --- | --- |
@@ -164,138 +248,45 @@ All errors follow `{ error: { code, message, retryable } }`.
 
 ---
 
-## Project Structure
-
-```
-profile-sorter/
-├── client/                          # React frontend (single page)
-│   ├── src/
-│   │   ├── api/                     # API layer — per-domain files with try/catch
-│   │   │   ├── http.ts              # shared fetch wrapper + ApiError
-│   │   │   ├── sessions.ts          # createSession, searchSession, sendFeedback, freezeSession
-│   │   │   └── catalog.ts           # getCatalog
-│   │   ├── models/                  # TypeScript interfaces mirroring server DTOs
-│   │   │   ├── profile.ts
-│   │   │   ├── criteria.ts
-│   │   │   └── session.ts
-│   │   ├── components/              # Pure presentational components
-│   │   │   ├── SearchBar.tsx
-│   │   │   ├── CriteriaPanel.tsx
-│   │   │   ├── ProfileCard.tsx
-│   │   │   ├── Results.tsx
-│   │   │   ├── ImprovementBar.tsx
-│   │   │   └── ErrorBox.tsx
-│   │   └── pages/
-│   │       └── AppPage.tsx          # single page — search bar at top, results below
-│   ├── Dockerfile
-│   └── package.json
-├── server/
-│   ├── src/
-│   │   ├── index.ts                 # entry point — wires classes, starts server
-│   │   ├── app.ts                   # express app + CORS + routes + error handler
-│   │   ├── config.ts                # reads env vars, fails if LLM_API_KEY missing
-│   │   ├── errors.ts                # fail() + catchErrors — single error boundary
-│   │   ├── validation.ts            # bean-style DTO checks
-│   │   ├── llm/
-│   │   │   ├── openai.client.ts     # only SDK caller — timeout, retry, JSON parse + validate
-│   │   │   └── prompts.ts           # loads prompts/*.md, fills {{variables}}
-│   │   └── modules/
-│   │       ├── sessions/
-│   │       │   ├── sessions.controller.ts   # thin HTTP layer
-│   │       │   ├── sessions.service.ts      # orchestrates the full loop
-│   │       │   └── sessions.repository.ts   # in-memory Map store
-│   │       ├── criteria/
-│   │       │   ├── criteria.service.ts
-│   │       │   └── criteria.model.ts        # filters + rubric interfaces
-│   │       ├── search/
-│   │       │   └── search.service.ts        # applies filters (pure code)
-│   │       ├── scoring/
-│   │       │   ├── scoring.service.ts       # LLM call 2, citation check, ranking
-│   │       │   └── scoring.model.ts
-│   │       ├── refinement/
-│   │       │   ├── refinement.service.ts    # LLM call 3
-│   │       │   └── refinement.model.ts
-│   │       └── profiles/
-│   │           ├── profiles.repository.ts   # loads profiles.json, builds catalog
-│   │           └── profiles.model.ts
-│   ├── prompts/
-│   │   ├── generate-criteria.md
-│   │   ├── score-profiles.md
-│   │   └── refine-criteria.md
-│   ├── Dockerfile
-│   ├── package.json
-│   └── tsconfig.json
-├── data/
-│   └── profiles.json                # 48 profiles = the whole talent pool
-├── docs/
-│   ├── SERVER_HANDOFF.md            # full spec
-│   └── DECISIONS.md                 # one line per decision
-├── docker-compose.yml
-├── .env.example
-└── README.md
-```
-
----
-
-## Decisions
-
-One line per decision. Full context in `docs/DECISIONS.md`.
-
-- **In-memory Map sessions, no persistence** — v0 loses state on restart (spec §3).
-- **No test framework** — automated tests out of scope; verified via tsc + live node checks + curl.
-- **No `dotenv`** — compose uses `env_file`, local dev sources `.env` via shell.
-- **CommonJS + `tsc`** — avoids ESM loader friction in Docker.
-- **No zod** — strict DTO classes with bean-style checks validate every request/response body.
-- **Model = interfaces, DTO = validation classes, repo = JSON file, service = logic, controller = HTTP mapping** — clean MVC separation.
-- **Skill match is whole token/segment** — `RDS` hits `AWS RDS`, `Java` never hits `JavaScript`, `SQL` never hits `PostgreSQL`.
-- **Score cache keyed on full rubric JSON + profile id** — filter-only changes never re-score.
-- **Unclear feedback applies reactions but keeps criteria** — explicit verdicts stand, `clarification` asks one question.
-- **Error handler exported separately from `createApp`** — Express requires error middleware after routes.
-
----
-
 ## Running
 
 ```bash
-cp .env.example .env        # set LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+cp .env.example .env        # set your LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 docker compose up --build   # server on http://localhost:4000, client on http://localhost:5173
 ```
 
-**Local dev** (required for the fault-injection demo):
-
+**Local dev** (needed for fault injection demo):
 ```bash
 cd server && npm install && set -a && source ../.env && set +a && npm run dev
 cd client && npm install && npm run dev
 ```
 
-### Environment variables
+### `.env`
+```
+LLM_API_KEY=sk-or-v1-...          # your OpenRouter API key
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=inclusionai/ling-3.0-flash-vl:free
+PORT=4000
+PROFILES_PATH=../data/profiles.json
+ENABLE_FAULT_INJECTION=false
+```
 
-| Variable | Required | Default | Purpose |
-| --- | --- | --- | --- |
-| `LLM_API_KEY` | Yes | — | API key, never committed |
-| `LLM_BASE_URL` | No | — | OpenAI-compatible endpoint |
-| `LLM_MODEL` | No | `llama-3.1-8b-instant` | Model id |
-| `PORT` | No | 4000 | Server port |
-| `PROFILES_PATH` | No | `../data/profiles.json` | Path to profiles JSON |
-| `ENABLE_FAULT_INJECTION` | No | false | Enable dev fault injection |
+The `.env` file is never committed. Only `.env.example` is tracked.
 
 ---
 
-## Fault Injection
+## Fault injection (dev only)
 
-Dev-only. Make real LLM attempts fail to demonstrate recovery and error states.
+Make real LLM attempts fail to demonstrate recovery and error handling.
 
-Enable with `ENABLE_FAULT_INJECTION=true`, then send the `X-Debug-Fault` header:
+Enable with `ENABLE_FAULT_INJECTION=true`, then add headers:
 
-| Header value | Behavior |
+| Header | Value |
 | --- | --- |
-| `rate_limit` | First N attempts return 429, then recovers |
-| `timeout` | First N attempts time out, then recovers |
-| `malformed_json` | First N attempts return bad JSON, then recovers |
+| `X-Debug-Fault` | `rate_limit`, `timeout`, or `malformed_json` |
+| `X-Debug-Fault-Count` | Number of attempts to fail (default 1) |
 
-Add `X-Debug-Fault-Count: N` (default 1) to control how many attempts fail. Count 1 shows silent recovery; a count above the retry limit shows the error state.
-
-Example:
+Count 1 shows silent recovery. A count above the retry limit shows the error state.
 
 ```bash
 curl -X POST http://localhost:4000/api/sessions \
