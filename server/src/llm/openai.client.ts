@@ -123,6 +123,8 @@ export class OpenAIClient {
           /not json/.test(text)
         ) {
           lastIssue = e?.message ?? "invalid JSON";
+          if (process.env.LLM_DEBUG_RAW === "1")
+            console.error("RAW-REPLY:", JSON.stringify(text).slice(0, 1200));
           break;
         }
         if (this.retryable(e) && attempt < 2) {

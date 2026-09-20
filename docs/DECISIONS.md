@@ -19,3 +19,4 @@
 - No zod: strict DTO classes with bean-style checks (src/validation.ts) validate every request/response body; services and controllers only accept those DTO objects.
 - Dropped response_format json_object: the free-tier model rejects structured outputs (400); the client now extracts the first {...} block and relies on the JSON-only prompt plus DTO validation + one feedback retry.
 - Bare "N years" means N-1..N+1 (with assumption): exact matching returned 0 for "3 years" since no profile has exactly 3.
+- Plain-JSON extraction (first {...} block) instead of response_format json_object; kept behind no flag since provider lacked structured outputs. Dev-only LLM_DEBUG_RAW=1 logs raw replies.
