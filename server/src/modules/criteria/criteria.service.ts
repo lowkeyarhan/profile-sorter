@@ -2,7 +2,7 @@
 import { FaultOpts, OpenAIClient } from "../../llm/openai.client";
 import { loadPrompt } from "../../llm/prompts";
 import { Catalog } from "../profiles/profiles.model";
-import { CriteriaOutputDto } from "./criteria.dto";
+import { CriteriaBody } from "./criteria.dto";
 import { Filters, Rubric } from "./criteria.model";
 
 export class CriteriaService {
@@ -17,6 +17,6 @@ export class CriteriaService {
       query,
       vocabulary: JSON.stringify(catalog),
     });
-    return this.llm.completeJson(CriteriaOutputDto, { ...prompt, ...opts });
+    return this.llm.completeJson(CriteriaBody.parse, { ...prompt, ...opts });
   }
 }

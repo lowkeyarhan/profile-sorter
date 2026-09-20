@@ -2,7 +2,7 @@
 // calls the service, sends the answer. No business logic here.
 import { catchErrors } from "../../errors";
 import { SessionsService } from "./sessions.service";
-import { FeedbackBodyDto, SearchBodyDto } from "./sessions.dto";
+import { FeedbackBody, SearchBody } from "./sessions.dto";
 
 function faultOf(req: any) {
   return {
@@ -26,12 +26,12 @@ export class SessionsController {
   });
 
   search = catchErrors(async (req, res) => {
-    const body = SearchBodyDto.parse(req.body ?? {});
+    const body = SearchBody.parse(req.body ?? {});
     res.json(await this.svc.search(req.params.id, body, faultOf(req)));
   });
 
   feedback = catchErrors(async (req, res) => {
-    const body = FeedbackBodyDto.parse(req.body ?? {});
+    const body = FeedbackBody.parse(req.body ?? {});
     res.json(await this.svc.feedback(req.params.id, body, faultOf(req)));
   });
 

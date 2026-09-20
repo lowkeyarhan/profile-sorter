@@ -1,14 +1,41 @@
-// Refinement DTO: validation for the LLM refinement reply (LLM call 3 output).
-import { z } from "zod";
-import { FiltersDto, RubricDto } from "../criteria/criteria.dto";
+// Refinement DTO: strict class for the LLM refinement reply.
+import { anyStr, reqArr, reqObj, reqStr } from "../../validation";
+import { FiltersBody, RubricBody } from "../criteria/criteria.dto";
 
-export const RefinementDto = z.object({
-  filters: FiltersDto,
-  rubric: RubricDto,
-  interpretations: z.array(
-    z.object({ reaction: z.string(), meaning: z.string() }),
-  ),
-  summary: z.string(),
-  changes: z.array(z.object({ what: z.string(), why: z.string() })),
-  clarification: z.string().nullable(),
-});
+export class RefinementBody {
+  constructor(
+    public filters: FiltersBody,
+    public rubric: RubricBody,
+    public interpretations: { reaction: string; meaning: string }[],
+    public summary: string,
+    public changes: { what: string; why: string }[],
+    public clarification: string | null
+  ) {}
+
+  static parse(data: any): RefinementBody {
+    const o = reqObj(data, "refinement");
+    const clarification = o.clarification === null || o.clarification === undefined
+      ? null
+      : reqStr(o.clarification, "clarification");
+    return new RefinementBody(
+      FiltersBody.parse(o.filters),
+      RubricBody.parse(o.rubric),
+      reqArr(o.interpretations, "interpretations").map((t, i) => {
+        const to = reqObj(t, `interpretations[${i}]`);
+        return {
+          reaction: reqStr(to.reaction, `interpretations[${i}].reaction`),
+          meaning: reqStr(to.meaning, `interpretations[${i}].meaning`),
+        };
+      }),
+      anyStr(o.summary, "summary"),
+      reqArr(o.changes, "changes").map((c, i) => {
+        const co = reqObj(c, `changes[${i}]`);
+        return {
+          what: reqStr(co.what, `changes[${i}].what`),
+          why: reqStr(co.why, `changes[${i}].why`),
+        };
+      }),
+      clarification
+    );
+  }
+}

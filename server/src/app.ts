@@ -21,8 +21,7 @@ export function createApp(): express.Express {
 }
 
 export function errorHandler(e: any, _req: any, res: any, _next: any): void {
-  const code =
-    e.code ?? (e?.name === "ZodError" ? "VALIDATION_ERROR" : "INTERNAL_ERROR");
+  const code = e.code ?? "INTERNAL_ERROR";
   res.status(errorToStatus(code)).json({
     error: {
       code,

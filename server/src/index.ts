@@ -20,7 +20,7 @@ const service = new SessionsService(
   new SearchService(),
   new CriteriaService(llm),
   new ScoringService(llm),
-  new RefinementService(llm)
+  new RefinementService(llm),
 );
 const controller = new SessionsController(service);
 

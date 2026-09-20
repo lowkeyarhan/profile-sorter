@@ -16,3 +16,4 @@
 - MVC fix: model = plain interfaces, DTO = Zod validation for all request/response bodies (service imports it), repo = only talks to the db (JSON file, sessions hashmap), service = the heavy lifting, controller = thin HTTP mapping.
 - OOP pass: services, repositories and controller are classes with constructor injection (Session is an entity class with snapshot/restore); wrecked neither behavior nor API.
 - Git history: 4 phased commits on main, pushed to github.com/lowkeyarhan/profile-sorter.
+- No zod: strict DTO classes with bean-style checks (src/validation.ts) validate every request/response body; services and controllers only accept those DTO objects.

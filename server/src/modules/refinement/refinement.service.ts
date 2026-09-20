@@ -1,7 +1,7 @@
 // Refinement service: LLM call 3. Updates filters + rubric from feedback.
 import { FaultOpts, OpenAIClient } from "../../llm/openai.client";
 import { loadPrompt } from "../../llm/prompts";
-import { RefinementDto } from "./refinement.dto";
+import { RefinementBody } from "./refinement.dto";
 import { RefineInput, Refinement } from "./refinement.model";
 
 export class RefinementService {
@@ -21,6 +21,6 @@ export class RefinementService {
       }),
       history: JSON.stringify(input.history),
     });
-    return this.llm.completeJson(RefinementDto, { ...prompt, ...opts });
+    return this.llm.completeJson(RefinementBody.parse, { ...prompt, ...opts });
   }
 }

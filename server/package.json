@@ -2,8 +2,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.0",
-    "openai": "^4.60.0",
-    "zod": "^3.23.0"
+    "openai": "^4.60.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.0",

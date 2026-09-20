@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { ZodType } from "zod";
 import { fail } from "../errors";
 import { Config } from "../config";
 
@@ -85,7 +84,8 @@ export class OpenAIClient {
     throw fail("LLM_UNAVAILABLE", "LLM unavailable", true);
   }
 
-  async completeJson<T>(schema: ZodType<T>, opts: LlmOpts): Promise<T> {
+  // validate turns the raw JSON into a strict DTO object (or throws VALIDATION_ERROR).
+  async completeJson<T>(validate: (data: unknown) => T, opts: LlmOpts): Promise<T> {
     let text = "";
     let lastIssue = "";
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -104,12 +104,12 @@ export class OpenAIClient {
                   ? `${opts.user}\n\nPrevious output failed validation: ${lastIssue}. Reply with corrected JSON only.`
                   : opts.user,
               );
-        return schema.parse(JSON.parse(text));
+        return validate(JSON.parse(text));
       } catch (e: any) {
         if (e?.code && e?.status && !this.retryable(e)) this.toTyped(e);
         if (
           e instanceof SyntaxError ||
-          e?.name === "ZodError" ||
+          e?.code === "VALIDATION_ERROR" ||
           /not json/.test(text)
         ) {
           lastIssue = e?.message ?? "invalid JSON";
@@ -130,7 +130,7 @@ export class OpenAIClient {
         opts.system,
         `${opts.user}\n\nPrevious output failed validation: ${lastIssue}. Reply with corrected JSON only.`,
       );
-      return schema.parse(JSON.parse(text));
+      return validate(JSON.parse(text));
     } catch {
       throw fail("LLM_BAD_OUTPUT", "LLM returned malformed output", false);
     }

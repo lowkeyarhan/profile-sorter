@@ -4,7 +4,7 @@ import { FaultOpts, OpenAIClient } from "../../llm/openai.client";
 import { loadPrompt } from "../../llm/prompts";
 import { Rubric } from "../criteria/criteria.model";
 import { Profile } from "../profiles/profiles.model";
-import { ScoreBatchDto } from "./scoring.dto";
+import { ScoreBatchBody } from "./scoring.dto";
 import { Citation, CriterionScore, ScoredProfile } from "./scoring.model";
 
 export class ScoringService {
@@ -56,7 +56,7 @@ export class ScoringService {
           rubric: JSON.stringify(rubric),
           profiles: JSON.stringify(fresh),
         });
-        const res = await this.llm.completeJson(ScoreBatchDto, { ...prompt, ...opts });
+        const res = await this.llm.completeJson(ScoreBatchBody.parse, { ...prompt, ...opts });
         for (const p of fresh) {
           const one = res.scores.find((x) => x.profileId === p.id);
           const criterionScores = rubric.criteria.map((c) => ({
