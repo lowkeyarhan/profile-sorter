@@ -1,6 +1,6 @@
 import type { ApiErrorBody } from "../models/session";
 
-export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+export const API_URL = import.meta.env.VITE_API_URL ?? "";
 
 export class ApiError extends Error {
   readonly code: string;

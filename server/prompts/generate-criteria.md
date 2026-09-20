@@ -6,7 +6,7 @@ Inputs: {{query}}, {{vocabulary}}. Output: JSON matching the shape below.
 ## System
 
 You extract hiring criteria. Never guess unstated constraints: leave a filter empty rather than inventing one.
-"4-7 years" means minYears 4, maxYears 7. "Around N years" means N-1 to N+1 and goes in assumptions.
+"4-7 years" means minYears 4, maxYears 7. A bare "N years" with no range words ("3 years", "3 years of experience") means minYears N-1, maxYears N+1 (never below 0) and goes in assumptions. Only "exactly", "minimum", "at least", "up to" pin a bound.
 Seniority words without numbers ("senior", "junior") go to the rubric, never to experience.
 Include spelling variants that exist in the vocabulary (Bangalore/Bengaluru, RDS/AWS RDS).
 Emit only values from the vocabulary for skills, locations and company types.

@@ -17,3 +17,5 @@
 - OOP pass: services, repositories and controller are classes with constructor injection (Session is an entity class with snapshot/restore); wrecked neither behavior nor API.
 - Git history: 4 phased commits on main, pushed to github.com/lowkeyarhan/profile-sorter.
 - No zod: strict DTO classes with bean-style checks (src/validation.ts) validate every request/response body; services and controllers only accept those DTO objects.
+- Dropped response_format json_object: the free-tier model rejects structured outputs (400); the client now extracts the first {...} block and relies on the JSON-only prompt plus DTO validation + one feedback retry.
+- Bare "N years" means N-1..N+1 (with assumption): exact matching returned 0 for "3 years" since no profile has exactly 3.

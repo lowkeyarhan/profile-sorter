@@ -55,13 +55,20 @@ export class OpenAIClient {
     const res = await this.sdk.chat.completions.create({
       model: this.config.llmModel,
       temperature: 0,
-      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-    });
+    } as any);
     return res.choices[0]?.message?.content ?? "";
+  }
+
+  private extractJson(text: string): unknown {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end <= start)
+      throw new SyntaxError("no JSON object in reply");
+    return JSON.parse(text.slice(start, end + 1));
   }
 
   private retryable(e: any): boolean {
@@ -107,7 +114,7 @@ export class OpenAIClient {
                   ? `${opts.user}\n\nPrevious output failed validation: ${lastIssue}. Reply with corrected JSON only.`
                   : opts.user,
               );
-        return validate(JSON.parse(text));
+        return validate(this.extractJson(text));
       } catch (e: any) {
         if (e?.code && e?.status && !this.retryable(e)) this.toTyped(e);
         if (
