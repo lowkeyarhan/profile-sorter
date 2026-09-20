@@ -85,7 +85,10 @@ export class OpenAIClient {
   }
 
   // validate turns the raw JSON into a strict DTO object (or throws VALIDATION_ERROR).
-  async completeJson<T>(validate: (data: unknown) => T, opts: LlmOpts): Promise<T> {
+  async completeJson<T>(
+    validate: (data: unknown) => T,
+    opts: LlmOpts,
+  ): Promise<T> {
     let text = "";
     let lastIssue = "";
     for (let attempt = 0; attempt < 3; attempt++) {

@@ -12,12 +12,14 @@ export function must(ok: boolean, field: string, rule: string): void {
 
 export function reqObj(v: any, field: string): Record<string, any> {
   if (v === null || v === undefined) bad(field, "is required");
-  if (typeof v !== "object" || Array.isArray(v)) bad(field, "must be an object");
+  if (typeof v !== "object" || Array.isArray(v))
+    bad(field, "must be an object");
   return v;
 }
 
 export function reqStr(v: any, field: string): string {
-  if (typeof v !== "string" || v.trim() === "") bad(field, "is required and must not be empty");
+  if (typeof v !== "string" || v.trim() === "")
+    bad(field, "is required and must not be empty");
   return v;
 }
 
@@ -42,17 +44,29 @@ export function optArr(v: any, field: string): any[] | undefined {
 }
 
 export function reqNum(v: any, field: string): number {
-  if (typeof v !== "number" || Number.isNaN(v)) bad(field, "is required and must be a number");
+  if (typeof v !== "number" || Number.isNaN(v))
+    bad(field, "is required and must be a number");
   return v;
 }
 
-export function intRange(v: any, field: string, min: number, max: number): number {
+export function intRange(
+  v: any,
+  field: string,
+  min: number,
+  max: number,
+): number {
   const n = reqNum(v, field);
-  if (!Number.isInteger(n) || n < min || n > max) bad(field, `must be a whole number from ${min} to ${max}`);
+  if (!Number.isInteger(n) || n < min || n > max)
+    bad(field, `must be a whole number from ${min} to ${max}`);
   return n;
 }
 
-export function numRange(v: any, field: string, min: number, max: number): number {
+export function numRange(
+  v: any,
+  field: string,
+  min: number,
+  max: number,
+): number {
   const n = reqNum(v, field);
   if (n < min || n > max) bad(field, `must be between ${min} and ${max}`);
   return n;

@@ -1,6 +1,3 @@
-// Sessions service: the heavy lifting. Owns the whole search loop:
-// create -> search -> feedback -> freeze. Calls the other services,
-// reads through the repositories, and never touches HTTP.
 import { randomUUID } from "crypto";
 import { fail } from "../../errors";
 import { FaultOpts } from "../../llm/openai.client";

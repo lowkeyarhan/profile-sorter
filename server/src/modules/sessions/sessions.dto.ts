@@ -8,14 +8,14 @@ import { Citation, CriterionScore } from "../scoring/scoring.model";
 export class SearchBody {
   constructor(
     public filters?: Filters,
-    public rubric?: Rubric
+    public rubric?: Rubric,
   ) {}
 
   static parse(data: any): SearchBody {
     const o = reqObj(data, "body");
     return new SearchBody(
       o.filters === undefined ? undefined : FiltersBody.parse(o.filters),
-      o.rubric === undefined ? undefined : RubricBody.parse(o.rubric)
+      o.rubric === undefined ? undefined : RubricBody.parse(o.rubric),
     );
   }
 }
@@ -23,29 +23,43 @@ export class SearchBody {
 export class ReactionBody {
   constructor(
     public profileId: string,
-    public verdict: "match" | "no_match"
+    public verdict: "match" | "no_match",
   ) {}
 
   static parse(data: any, field: string): ReactionBody {
     const o = reqObj(data, field);
     const verdict = reqStr(o.verdict, `${field}.verdict`);
-    must(verdict === "match" || verdict === "no_match", `${field}.verdict`, 'must be "match" or "no_match"');
-    return new ReactionBody(reqStr(o.profileId, `${field}.profileId`), verdict as "match" | "no_match");
+    must(
+      verdict === "match" || verdict === "no_match",
+      `${field}.verdict`,
+      'must be "match" or "no_match"',
+    );
+    return new ReactionBody(
+      reqStr(o.profileId, `${field}.profileId`),
+      verdict as "match" | "no_match",
+    );
   }
 }
 
 export class FeedbackBody {
   constructor(
     public message?: string,
-    public reactions?: ReactionBody[]
+    public reactions?: ReactionBody[],
   ) {}
 
   static parse(data: any): FeedbackBody {
     const o = reqObj(data, "body");
-    must(o.reactions === undefined || Array.isArray(o.reactions), "reactions", "must be an array");
-    const reactions = o.reactions === undefined
-      ? undefined
-      : o.reactions.map((r: any, i: number) => ReactionBody.parse(r, `reactions[${i}]`));
+    must(
+      o.reactions === undefined || Array.isArray(o.reactions),
+      "reactions",
+      "must be an array",
+    );
+    const reactions =
+      o.reactions === undefined
+        ? undefined
+        : o.reactions.map((r: any, i: number) =>
+            ReactionBody.parse(r, `reactions[${i}]`),
+          );
     return new FeedbackBody(optStr(o.message, "message"), reactions);
   }
 }
