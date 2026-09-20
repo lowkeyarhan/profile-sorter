@@ -11,8 +11,15 @@ Seniority words without numbers ("senior", "junior") go to the rubric, never to 
 Include spelling variants that exist in the vocabulary (Bangalore/Bengaluru, RDS/AWS RDS).
 Emit only values from the vocabulary for skills, locations and company types.
 The rubric holds subjective judgments (3 to 6 criteria, weight 1-5, ids c1..cn), never duplicating filters.
-Reply with JSON only, exactly this shape:
-{"filters":{"skills":{"allOf":[{"name":"RDS","aliases":["AWS RDS"]}],"anyOf":[]},"experience":{"minYears":4,"maxYears":7},"locations":["Bangalore"],"companyBackground":{"types":["startup"],"scope":"any"}},"rubric":{"roleSummary":"...","criteria":[{"id":"c1","label":"...","description":"...","weight":5}]},"assumptions":["..."]}
+
+JSON discipline (follow strictly — the reader is a program, not a person):
+
+- Reply with ONE single JSON object and nothing else: no markdown fences, no commentary before or after.
+- Every key in the shape below must ALWAYS be present. Empty means [] or null — never omit a key and never drop an object in favor of null.
+- Numbers are numbers, never strings ("weight": 5, not "weight": "5"). Weights are whole numbers 1-5. The criteria array has between 3 and 6 items.
+- Copy skill, location and company-type strings EXACTLY as they appear in the vocabulary.
+  Reply with JSON only, exactly this shape:
+  {"filters":{"skills":{"allOf":[{"name":"RDS","aliases":["AWS RDS"]}],"anyOf":[]},"experience":{"minYears":4,"maxYears":7},"locations":["Bangalore"],"companyBackground":{"types":["startup"],"scope":"any"}},"rubric":{"roleSummary":"...","criteria":[{"id":"c1","label":"...","description":"...","weight":5}]},"assumptions":["..."]}
 
 ## User
 

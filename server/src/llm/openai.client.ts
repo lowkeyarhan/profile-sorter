@@ -63,12 +63,39 @@ export class OpenAIClient {
     return res.choices[0]?.message?.content ?? "";
   }
 
-  private extractJson(text: string): unknown {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start < 0 || end <= start)
-      throw new SyntaxError("no JSON object in reply");
-    return JSON.parse(text.slice(start, end + 1));
+  // Fallback: repairs common model sloppiness (fences, comments, trailing
+  // commas) and retries parsing before giving up with a SyntaxError.
+  private parseLenient(text: string): unknown {
+    const noFence = text.replace(/```json|```/g, "");
+    const start = noFence.indexOf("{");
+    const end = noFence.lastIndexOf("}");
+    const candidates =
+      start >= 0 && end > start
+        ? [noFence.slice(start, end + 1), noFence]
+        : [noFence];
+    let firstError: unknown = null;
+    for (const c of candidates) {
+      try {
+        return JSON.parse(c);
+      } catch (e) {
+        firstError = firstError ?? e;
+      }
+      try {
+        return JSON.parse(this.repair(c));
+      } catch (e) {
+        firstError = firstError ?? e;
+      }
+    }
+    throw firstError instanceof Error
+      ? firstError
+      : new SyntaxError("no JSON object in reply");
+  }
+
+  private repair(s: string): string {
+    return s
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^"\n]*$/gm, "$1")
+      .replace(/,\s*([}\]])/g, "$1");
   }
 
   private retryable(e: any): boolean {
@@ -114,7 +141,7 @@ export class OpenAIClient {
                   ? `${opts.user}\n\nPrevious output failed validation: ${lastIssue}. Reply with corrected JSON only.`
                   : opts.user,
               );
-        return validate(this.extractJson(text));
+        return validate(this.parseLenient(text));
       } catch (e: any) {
         if (e?.code && e?.status && !this.retryable(e)) this.toTyped(e);
         if (
@@ -142,7 +169,7 @@ export class OpenAIClient {
         opts.system,
         `${opts.user}\n\nPrevious output failed validation: ${lastIssue}. Reply with corrected JSON only.`,
       );
-      return validate(JSON.parse(text));
+      return validate(this.parseLenient(text));
     } catch {
       throw fail("LLM_BAD_OUTPUT", "LLM returned malformed output", false);
     }
